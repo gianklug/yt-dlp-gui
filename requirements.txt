@@ -1,1 +1,5 @@
 flask
+django
+yt-dlp
+sqlite3
+configparser
