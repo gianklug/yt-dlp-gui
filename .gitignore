@@ -1,1 +1,4 @@
 app/config.ini
+__pycache__
+*.cpython
+*.db

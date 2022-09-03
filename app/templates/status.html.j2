@@ -10,17 +10,19 @@
       </tr>
     </thead>
     <tbody>
+     {% for song in songs %}
       <tr>
-        <td>1</td>
+        <td>{{ song[0] }}</td>
         <td>
-          <a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-            >https://www.youtube.com/watch?v=dQw4w9WgXcQ</a
-          >
+          <a href="{{ song[1] }}">{{ song[1] }}</a>
         </td>
-        <td>Never_Gonna_Give_You_Up.mp3</td>
-        <td>Rickrolling</td>
-        <td>Processing</td>
+        <td>{{ song[2] }}</td>
+        <td>{{ song[3] }}</td>
+        <td>{{ "Finished" if song[4] == 0}}
+            {{ "Failed" if song[4] == 1}}
+            {{ "Processing" if song[4] == 2}}</td>
       </tr>
+      {% endfor %}
     </tbody>
   </table>
 </div>
