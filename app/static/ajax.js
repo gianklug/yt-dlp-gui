@@ -16,8 +16,17 @@ $("#download-button").on ('click', function (e) {
 });
 
 // Automatic status refresh
-async function refreshStatus() {
-    let val = await fetch("/status");
-    $("#status").html(await val.text())
-}
-setInterval(function(){refreshStatus()}, 1000)
+//async function refreshStatus() {
+//    let val = await fetch("/status");
+//    $("#status").html(await val.text())
+// }
+// setInterval(function(){refreshStatus()}, 1000)
+
+//const statusSocket = new WebSocket("ws://172.16.1.142:5000/");
+//statusSocket.onmessage = (event) => {
+//    console.log(event.data);
+//  }
+var socket = io();
+socket.on('message', function(message) {
+    $("#status").html(message)
+});

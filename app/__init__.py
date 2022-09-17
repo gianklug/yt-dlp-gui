@@ -1,8 +1,8 @@
 from __future__ import unicode_literals
 from django.shortcuts import redirect
 from flask import Flask, render_template, request, redirect
+from flask_socketio import SocketIO, send
 from yt_dlp import YoutubeDL
-import os
 import requests
 import sqlite3
 import configparser
@@ -17,9 +17,32 @@ def init_db():
     con.commit()
     con.close()
 
+
+# Get playlist list from azuracast api
+def get_playlists():
+    headers = {"Authorization": f"Bearer {config['api_key']}"}
+    data = requests.get(
+        f"{config['azuracast_host']}/api/station/{config['station_id']}/playlists", headers=headers)
+
+    playlists = [{"id": key["id"], "name": key["name"]} for key in data.json()]
+    return playlists
+
+
+# Playlist ID to name
+def get_playlist_name(id):
+    headers = {"Authorization": f"Bearer {config['api_key']}"}
+    data = requests.get(
+        f"{config['azuracast_host']}/api/station/{config['station_id']}/playlist/{id}", headers=headers).json()
+    return data["name"]
+
+
+# Render status tabe
+def status():
+    songs = get_songs_from_db()
+    return str(render_template('status.html.j2', songs=songs))
+
+
 # Add Song to DB
-
-
 def add_song_to_db(url, playlist):
     con = sqlite3.connect("data.db")
     c = con.cursor()
@@ -30,20 +53,9 @@ def add_song_to_db(url, playlist):
     id = c.fetchone()
     con.close()
     return id[0]
-# Query Songs from DB
 
-
-def get_songs_from_db(limit=10):
-    con = sqlite3.connect("data.db")
-    c = con.cursor()
-    c.execute("SELECT * FROM yt ORDER BY id DESC LIMIT ?", (str(limit), ))
-    rows = c.fetchall()
-    con.close()
-    return rows
 
 # Update Song in DB
-
-
 def update_song_in_db(id, status, filename=""):
     con = sqlite3.connect("data.db")
     c = con.cursor()
@@ -52,47 +64,42 @@ def update_song_in_db(id, status, filename=""):
     con.commit()
     con.close()
 
-# Get playlist list from azuracast api
 
 
-def get_playlists():
-    headers = {"Authorization": f"Bearer {config['api_key']}"}
-    data = requests.get(
-        f"{config['azuracast_host']}/api/station/{config['station_id']}/playlists", headers=headers)
-
-    playlists = [{"id": key["id"], "name": key["name"]} for key in data.json()]
-    return playlists
-
-
-def get_playlist_name(id):
-    headers = {"Authorization": f"Bearer {config['api_key']}"}
-    data = requests.get(
-        f"{config['azuracast_host']}/api/station/{config['station_id']}/playlist/{id}", headers=headers).json()
-    return data["name"]
+# Query Songs from DB
+def get_songs_from_db(limit=10):
+    try:
+        con = sqlite3.connect("data.db")
+        c = con.cursor()
+        c.execute("SELECT * FROM yt ORDER BY id DESC LIMIT ?", (str(limit), ))
+        rows = c.fetchall()
+        con.close()
+        return rows
+    except:
+        print("Oh no, it's broken")
+        return []
 
 
 # Create the flask app
 app = Flask(__name__, static_url_path='/static')
 
+
 # Connect the sqlite DB
 init_db()
 
-
 # Parse the config
 parser = configparser.ConfigParser()
-parser.read("config.ini")
-config = parser["config"]
+try:
+    parser.read("config.ini")
+    config = parser["config"]
+except:
+    parser.read("app/config.ini")
+    config = parser["config"]
 
 
 @app.route('/')
 def index():
     return render_template('index.html.j2', playlists=get_playlists())
-
-
-@app.route('/status')
-def status():
-    songs = get_songs_from_db()
-    return render_template('status.html.j2', songs=songs)
 
 
 @app.route('/download')
@@ -108,13 +115,18 @@ def download():
     # Get playlist human readable name
     playlist_name = get_playlist_name(playlist)
 
+
     # Add the song to the database
     db_id = add_song_to_db(url, playlist_name)
+
+
+    # Broadcast status update to websockets
+    socketio.send(status())
 
     ydl_opts = {
         'format': 'bestaudio[ext=mp3]/best',
         'writethumbnail': True,
-        'outtmpl': './%(artist)s/%(title)s.%(ext)s',
+        'outtmpl': f"{config['music_dir']}/%(title)s.%(ext)s",
         'postprocessors': [
             {'key': 'FFmpegExtractAudio',
              'preferredcodec': 'mp3',
@@ -130,8 +142,23 @@ def download():
             filename = ydl.prepare_filename(download)
 
             update_song_in_db(db_id, 0, filename)
-
         except:
             update_song_in_db(db_id, 1)
-
+        # Broadcast status update to websockets
+        socketio.send(status())
     return redirect("/")
+
+
+# Create the websocket listener
+socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=5)
+
+
+# Send data on connect
+@socketio.on('connect')
+def connect():
+    send(status())
+
+
+# run the app
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port=5000)

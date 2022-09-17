@@ -1,5 +1,7 @@
 flask
 django
 yt-dlp
-sqlite3
+pysqlite3
 configparser
+flask_socketio
+gevent-websocket
